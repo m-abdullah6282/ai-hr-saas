@@ -1,0 +1,15 @@
+# Backend
+backend/.env
+backend/venv/
+backend/__pycache__/
+backend/*.pyc
+backend/job.json
+backend/test_resume.pdf
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+
+# General
+.DS_Storebackend/routers/__pycache__/
