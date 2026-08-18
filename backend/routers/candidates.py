@@ -1,12 +1,14 @@
 import os
 import re
 import uuid
+import requests
 from fastapi import APIRouter, HTTPException, Depends, File, Form, UploadFile
 from pydantic import BaseModel
 from supabase import create_client
 from dotenv import load_dotenv
 from routers.auth import get_current_user
 from routers.jobs import get_user_company
+from services.ai_service import extract_text_from_pdf, analyze_resume
 
 load_dotenv()
 
@@ -19,7 +21,7 @@ supabase = create_client(
 router = APIRouter(tags=["candidates"])
 
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
-ALLOWED_STATUSES = {"applied", "screened", "interview", "hired"}
+ALLOWED_STATUSES = {"applied", "screened", "interview", "hired", "rejected"}
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
@@ -120,7 +122,7 @@ def update_candidate_status(candidate_id: str, request: CandidateStatusUpdate, u
     if request.status not in ALLOWED_STATUSES:
         raise HTTPException(
             status_code=400,
-            detail="Invalid status. Allowed values: applied, screened, interview, hired"
+            detail="Invalid status. Allowed values: applied, screened, interview, hired, rejected"
         )
     company = get_user_company(user)
     try:
@@ -139,6 +141,69 @@ def update_candidate_status(candidate_id: str, request: CandidateStatusUpdate, u
     try:
         response = supabase.table("candidates").update({
             "status": request.status,
+            "updated_at": "now()",
+        }).eq("id", candidate_id).execute()
+        return response.data[0]
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# ---- 4. AI ANALYZE CANDIDATE (protected) ----
+@router.post("/candidates/{candidate_id}/analyze")
+def analyze_candidate(candidate_id: str, user=Depends(get_current_user)):
+    company = get_user_company(user)
+
+    # Candidate dhoondo
+    try:
+        candidate = supabase.table("candidates").select("*").eq("id", candidate_id).maybe_single().execute()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not candidate or not candidate.data:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    # Ownership check: candidate jis job se linked hai, wo job user ki company ki ho
+    try:
+        job = supabase.table("jobs").select("*").eq("id", candidate.data["job_id"]).maybe_single().execute()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not job or not job.data:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.data["company_id"] != company["id"]:
+        raise HTTPException(status_code=403, detail="Not your candidate")
+
+    # Resume download karo (public URL se)
+    resume_url = candidate.data.get("resume_url")
+    if not resume_url:
+        raise HTTPException(status_code=400, detail="Candidate ke paas resume_url nahi hai")
+    try:
+        resp = requests.get(resume_url, timeout=30)
+        resp.raise_for_status()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Resume download fail hui: {str(e)}")
+
+    # PDF se text nikalo
+    try:
+        resume_text = extract_text_from_pdf(resp.content)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    # Groq se analysis karwao
+    try:
+        result = analyze_resume(
+            resume_text,
+            job_title=job.data.get("title") or "",
+            job_description=job.data.get("description") or "",
+            job_requirements=job.data.get("requirements") or "",
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+    # Results candidates table mein save karo
+    try:
+        response = supabase.table("candidates").update({
+            "parsed_data": result,
+            "ai_score": result.get("score"),
+            "ai_reasoning": result.get("reasoning"),
             "updated_at": "now()",
         }).eq("id", candidate_id).execute()
         return response.data[0]

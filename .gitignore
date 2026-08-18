@@ -13,3 +13,6 @@ frontend/.env
 
 # General
 .DS_Storebackend/routers/__pycache__/
+backend/login.json
+backend/test_resume_real.pdf
+backend/services/__pycache__/

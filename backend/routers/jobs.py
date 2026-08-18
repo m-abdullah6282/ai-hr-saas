@@ -21,6 +21,7 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 class JobCreate(BaseModel):
     title: str
     description: str | None = None
+    requirements: str | None = None
     location: str | None = None
     employment_type: str | None = None  # full-time, part-time, contract, internship
     salary_min: float | None = None
@@ -32,6 +33,7 @@ class JobCreate(BaseModel):
 class JobUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
+    requirements: str | None = None
     location: str | None = None
     employment_type: str | None = None
     salary_min: float | None = None
@@ -70,6 +72,7 @@ def create_job(request: JobCreate, user=Depends(get_current_user)):
             "company_id": company["id"],
             "title": request.title,
             "description": request.description,
+            "requirements": request.requirements,
             "location": request.location,
             "employment_type": request.employment_type,
             "salary_min": request.salary_min,
