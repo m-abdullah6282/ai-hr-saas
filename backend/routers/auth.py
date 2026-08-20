@@ -19,6 +19,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 class SignupRequest(BaseModel):
     email: str
     password: str
+    company_name: str
 
 class LoginRequest(BaseModel):
     email: str
@@ -28,14 +29,30 @@ class LoginRequest(BaseModel):
 # ---- SIGNUP ----
 @router.post("/signup")
 def signup(request: SignupRequest):
+    if not request.company_name or not request.company_name.strip():
+        raise HTTPException(status_code=400, detail="Company name is required")
     try:
         response = supabase.auth.sign_up({
             "email": request.email,
             "password": request.password
         })
-        return {"message": "User created", "user": response.user}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    # User ke diye hue company_name se companies table mein company banao
+    try:
+        company_res = supabase.table("companies").insert({
+            "name": request.company_name.strip(),
+            "owner_id": response.user.id,
+        }).execute()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Company creation failed: {str(e)}")
+
+    return {
+        "message": "User created",
+        "user": response.user,
+        "company": company_res.data[0],
+    }
 
 
 # ---- LOGIN ----

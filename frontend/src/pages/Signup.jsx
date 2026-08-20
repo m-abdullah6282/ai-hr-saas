@@ -7,6 +7,7 @@ export default function Signup() {
   const navigate = useNavigate();
 
   const [email, setEmail] = useState("");
+  const [companyName, setCompanyName] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
@@ -25,7 +26,7 @@ export default function Signup() {
 
     setLoading(true);
     try {
-      await signup(email, password);
+      await signup(email, password, companyName);
       setSuccess("Account created! Redirecting to login...");
       // Thoda wait kar ke login page pe le jao taaki message dikhe
       setTimeout(() => navigate("/login"), 1500);
@@ -74,6 +75,21 @@ export default function Signup() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@company.com"
+                className="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="companyName" className="mb-1 block text-sm font-medium text-slate-700">
+                Company Name
+              </label>
+              <input
+                id="companyName"
+                type="text"
+                required
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                placeholder="Acme Inc."
                 className="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
               />
             </div>

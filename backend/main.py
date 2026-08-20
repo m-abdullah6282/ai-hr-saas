@@ -17,11 +17,14 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_SECRET_KEY)
 app = FastAPI()
 
 # CORS setup - frontend se requests allow karne ke liye
+# FRONTEND_URL env var se milta hai (Vercel dashboard mein set karo);
+# default Vercel deployment + local dev server.
+frontend_url = os.getenv("FRONTEND_URL", "https://frontend-sable-chi-30.vercel.app")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",  # React dev server
-        "https://frontend-sable-chi-30.vercel.app",  # Vercel deployment
+        frontend_url,             # Vercel deployment
     ],
     allow_credentials=True,
     allow_methods=["*"],

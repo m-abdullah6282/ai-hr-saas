@@ -29,10 +29,15 @@ export function AuthProvider({ children }) {
   // Token nahi hai to loading ki zaroorat nahi.
   const [loading, setLoading] = useState(Boolean(localStorage.getItem("access_token")));
 
-  // Mount hone par: token exist karta hai to user ka fresh data
-  // /auth/me se fetch karte hain (best effort).
+  // Mount hone par (page reload / fresh visit): agar localStorage mein
+  // token pada hai to /auth/me se verify karte hain. Isse invalid/expired
+  // token cleanup ho jata hai. Sirf EK baar chalta hai — login ke baad nahi,
+  // warna login ke turant baad verification fail hone par fresh session
+  // bhi wipe ho jata (white screen / logout loop).
   useEffect(() => {
-    if (!token) return;
+    const storedToken = localStorage.getItem("access_token");
+    // Token nahi hai to loading pehle se false hai — kuch karne ki zaroorat nahi.
+    if (!storedToken) return;
 
     client
       .get("/auth/me")
@@ -45,7 +50,7 @@ export function AuthProvider({ children }) {
         setUser(null);
       })
       .finally(() => setLoading(false));
-  }, [token]);
+  }, []);
 
   // LOGIN: backend ke /auth/login ko call karte hain.
   // Response se token nikal kar localStorage + state mein save karte hain.
@@ -65,8 +70,8 @@ export function AuthProvider({ children }) {
   // SIGNUP: /auth/signup ko call karte hain.
   // Backend signup pe token nahi deta, isliye bas result return karte
   // hain — UI decide karega ki login page pe bhejna hai ya message dikhana.
-  const signup = async (email, password) => {
-    const res = await client.post("/auth/signup", { email, password });
+  const signup = async (email, password, company_name) => {
+    const res = await client.post("/auth/signup", { email, password, company_name });
     return res.data;
   };
 

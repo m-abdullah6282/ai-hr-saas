@@ -2,8 +2,12 @@ import axios from "axios";
 
 // Ek shared axios instance banate hain jo poore app mein use hoga.
 // Isse har jagah baseURL aur headers repeat nahi karne padte.
+// Production (Vercel) mein VITE_API_URL env var se backend ka URL aata hai;
+// locally default 127.0.0.1:8000 use hota hai.
+const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+
 const client = axios.create({
-  baseURL: "http://127.0.0.1:8000",
+  baseURL: API_URL,
 });
 
 // Request interceptor: har request jaane se PEHLE ye chalta hai.
