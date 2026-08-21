@@ -29,6 +29,9 @@ export default function Pipeline() {
   const [analyzingId, setAnalyzingId] = useState(null);
   const [expandedReasoning, setExpandedReasoning] = useState({});
   const [rejectingId, setRejectingId] = useState(null);
+  const [generatingId, setGeneratingId] = useState(null);
+  // undefined = khula (default), sirf user toggle karne par explicit hota hai
+  const [expandedQuestions, setExpandedQuestions] = useState({});
 
   // Candidates fetch karo. setState sirf promise callbacks (then/catch/finally)
   // mein hota hai — isliye React lint rule (sync setState in effect) pass hota hai.
@@ -93,9 +96,30 @@ export default function Pipeline() {
     }
   };
 
+  // Interview questions generate karo (analyze ke baad hi available)
+  const handleGenerateQuestions = async (candidate) => {
+    setGeneratingId(candidate.id);
+    setError("");
+    try {
+      const res = await client.post(`/candidates/${candidate.id}/generate-questions`);
+      setCandidates((prev) => prev.map((c) => (c.id === candidate.id ? res.data : c)));
+      // Fresh questions turant khule dikhne chahiye
+      setExpandedQuestions((prev) => ({ ...prev, [candidate.id]: true }));
+    } catch (err) {
+      setError(err?.response?.data?.detail || "Could not generate interview questions.");
+    } finally {
+      setGeneratingId(null);
+    }
+  };
+
   // ai_reasoning ka expand/collapse toggle
   const toggleReasoning = (id) => {
     setExpandedReasoning((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  // Interview questions section ka expand/collapse toggle
+  const toggleQuestions = (id) => {
+    setExpandedQuestions((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
   // Drag khatam hone par status update karo (optimistic)
@@ -226,14 +250,56 @@ export default function Pipeline() {
                                       onClick={() => toggleReasoning(candidate.id)}
                                       className="mt-0.5 text-xs font-medium text-indigo-600 hover:text-indigo-700"
                                     >
-                                      {expandedReasoning[candidate.id] ? "Show less" : "Show more"}
-                                    </button>
-                                  )}
-                                </div>
-                              )}
+                                        {expandedReasoning[candidate.id] ? "Show less" : "Show more"}
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
 
-                              <div className="mt-3 flex items-center gap-2">
-                                {candidate.resume_url && (
+                                {/* Generate Interview Questions — sirf analyze ke baad */}
+                                {candidate.ai_score != null &&
+                                  !Array.isArray(candidate.interview_questions?.questions) && (
+                                  <div className="mt-3">
+                                    <button
+                                      onClick={() => handleGenerateQuestions(candidate)}
+                                      disabled={generatingId === candidate.id}
+                                      className="w-full rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-600 transition hover:bg-indigo-100 disabled:opacity-60"
+                                    >
+                                      {generatingId === candidate.id
+                                        ? "Generating..."
+                                        : "Generate Interview Questions"}
+                                    </button>
+                                  </div>
+                                )}
+
+                                {/* Cached/fresh questions — numbered expandable list */}
+                                {Array.isArray(candidate.interview_questions?.questions) &&
+                                  candidate.interview_questions.questions.length > 0 && (
+                                  <div className="mt-2 border-t border-slate-100 pt-2">
+                                    <button
+                                      onClick={() => toggleQuestions(candidate.id)}
+                                      className="flex w-full items-center justify-between rounded px-0.5 py-0.5 text-left text-xs font-semibold text-slate-700 transition hover:text-indigo-600"
+                                    >
+                                      <span>
+                                        Interview Questions (
+                                        {candidate.interview_questions.questions.length})
+                                      </span>
+                                      <span>
+                                        {(expandedQuestions[candidate.id] ?? true) ? "Hide" : "Show"}
+                                      </span>
+                                    </button>
+                                    {(expandedQuestions[candidate.id] ?? true) && (
+                                      <ol className="mt-1.5 list-decimal space-y-1 pl-4 text-xs leading-snug text-slate-600">
+                                        {candidate.interview_questions.questions.map((q, i) => (
+                                          <li key={i}>{q}</li>
+                                        ))}
+                                      </ol>
+                                    )}
+                                  </div>
+                                )}
+
+                                <div className="mt-3 flex items-center gap-2">
+                                  {candidate.resume_url && (
                                   <a
                                     href={candidate.resume_url}
                                     target="_blank"

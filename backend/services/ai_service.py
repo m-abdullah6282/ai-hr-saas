@@ -95,6 +95,81 @@ def analyze_resume(resume_text: str, job_title: str, job_description: str, job_r
     return _sanitize_result(data)
 
 
+# ---- Candidate profile + job se 5 personalized interview questions banao ----
+def generate_interview_questions(parsed_data: dict, job_title: str, job_description: str, job_requirements: str) -> dict:
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        raise RuntimeError("GROQ_API_KEY .env file mein set nahi hai")
+
+    # Client har call par lazily banao — taake import time pe crash na ho
+    client = Groq(api_key=api_key)
+
+    system_prompt = (
+        "You are an expert technical interviewer for an AI-powered HR SaaS platform. "
+        "You design personalized interview questions for a specific candidate against a specific job.\n\n"
+        "Look at the candidate's extracted profile (skills, experience) AND the job's "
+        "title/description/requirements, then generate exactly 5 specific interview questions.\n\n"
+        "IMPORTANT: Identify gaps between the candidate's resume and the job requirements "
+        "(e.g. a required skill that is missing or looks weak, less experience than needed). "
+        "At least 1-2 of the 5 questions must specifically probe those gaps so the interviewer "
+        "can verify the candidate can actually handle them.\n\n"
+        "Rules:\n"
+        "- Questions must be specific to THIS candidate and THIS job — no generic questions.\n"
+        "- Mix technical depth-checks with practical/experience-based questions.\n"
+        "- Each question should be a single clear sentence or two.\n\n"
+        "Respond with STRICT JSON only, in exactly this format (no extra text, no markdown):\n"
+        '{"questions": ["string", "string", "string", "string", "string"]}\n'
+        "- Exactly 5 questions, all strings."
+    )
+
+    user_prompt = (
+        f"JOB TITLE: {job_title}\n"
+        f"JOB DESCRIPTION: {job_description}\n"
+        f"JOB REQUIREMENTS: {job_requirements}\n\n"
+        f"CANDIDATE PROFILE (extracted from resume): {json.dumps(parsed_data)}\n\n"
+        "Generate the 5 interview questions as strict JSON only."
+    )
+
+    try:
+        completion = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.4,
+            max_tokens=1000,
+            response_format={"type": "json_object"},
+        )
+        raw = completion.choices[0].message.content
+    except Exception as e:
+        raise RuntimeError(f"Groq API call fail hui: {str(e)}")
+
+    # LLM kabhi-kabhi markdown code fences mein JSON wrap kar deta hai
+    raw = raw.strip()
+    if raw.startswith("```"):
+        raw = raw.strip("`")
+        if raw.startswith("json"):
+            raw = raw[4:]
+        raw = raw.strip()
+
+    try:
+        data = json.loads(raw)
+    except Exception as e:
+        raise RuntimeError(f"LLM ne invalid JSON return kiya: {str(e)}")
+
+    questions = data.get("questions") if isinstance(data, dict) else None
+    if not isinstance(questions, list):
+        raise RuntimeError("LLM ne 'questions' list return nahi ki")
+
+    # Har question ko clean string banao, khali wale hatao
+    cleaned = [str(q).strip() for q in questions if q is not None and str(q).strip()]
+    if not cleaned:
+        raise RuntimeError("LLM ne koi valid question return nahi kiya")
+
+    return {"questions": cleaned}
+
+
 # ---- LLM ka output clean/safe karo (kabhi kabhi missing ya galat type deta hai) ----
 def _sanitize_result(data: dict) -> dict:
     name = data.get("name")

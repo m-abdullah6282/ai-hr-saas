@@ -8,7 +8,7 @@ from supabase import create_client
 from dotenv import load_dotenv
 from routers.auth import get_current_user
 from routers.jobs import get_user_company
-from services.ai_service import extract_text_from_pdf, analyze_resume
+from services.ai_service import extract_text_from_pdf, analyze_resume, generate_interview_questions
 
 load_dotenv()
 
@@ -204,6 +204,56 @@ def analyze_candidate(candidate_id: str, user=Depends(get_current_user)):
             "parsed_data": result,
             "ai_score": result.get("score"),
             "ai_reasoning": result.get("reasoning"),
+            "updated_at": "now()",
+        }).eq("id", candidate_id).execute()
+        return response.data[0]
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# ---- 5. AI GENERATE INTERVIEW QUESTIONS (protected) ----
+@router.post("/candidates/{candidate_id}/generate-questions")
+def generate_questions_for_candidate(candidate_id: str, user=Depends(get_current_user)):
+    company = get_user_company(user)
+
+    # Candidate dhoondo
+    try:
+        candidate = supabase.table("candidates").select("*").eq("id", candidate_id).maybe_single().execute()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not candidate or not candidate.data:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    # Parsed data bina analyze kiye questions nahi ban sakte
+    parsed_data = candidate.data.get("parsed_data")
+    if not parsed_data:
+        raise HTTPException(status_code=400, detail="Please analyze the resume first")
+
+    # Ownership check: candidate jis job se linked hai, wo job user ki company ki ho
+    try:
+        job = supabase.table("jobs").select("*").eq("id", candidate.data["job_id"]).maybe_single().execute()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not job or not job.data:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.data["company_id"] != company["id"]:
+        raise HTTPException(status_code=403, detail="Not your candidate")
+
+    # Groq se interview questions banwao
+    try:
+        result = generate_interview_questions(
+            parsed_data,
+            job_title=job.data.get("title") or "",
+            job_description=job.data.get("description") or "",
+            job_requirements=job.data.get("requirements") or "",
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+    # Questions candidates table mein save karke updated row wapas do
+    try:
+        response = supabase.table("candidates").update({
+            "interview_questions": result,
             "updated_at": "now()",
         }).eq("id", candidate_id).execute()
         return response.data[0]
